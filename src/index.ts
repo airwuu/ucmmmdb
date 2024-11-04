@@ -13,8 +13,9 @@
 
 import { users , menu, item } from '../schemas/drizzle'
 import { drizzle } from 'drizzle-orm/d1'
+import { eq, and } from 'drizzle-orm';
 import { Hono } from 'hono'
-import {nameLocation, nameCategoryPav, nameCategoryDC, nameDay, idLocation,idCategoryPav, idCategoryDC,idDay, pavMenuGroupTime, formatTimePAV, fetchMenu, formatTimeDC, dcMenuGroupTime} from "./menuAPI"
+import {nameLocation, nameCategoryPav, nameCategoryDC, nameDay, idLocation,idCategoryPav, idCategoryDC,idDay, pavMenuGroupTime, formatTimePAV, fetchMenu, formatTimeDC, dcMenuGroupTime} from "./menu_functions"
 import { v4 as uuidv4 } from 'uuid';
 const app = new Hono<{ Bindings: CloudflareBindings }>()
 
@@ -28,7 +29,47 @@ app.get('/users', async (c) => {
   return c.json(result)
 })
 
-// note: when i run a cron job, use thie fetch request
+app.get('/menu/:week/:location/:day/:meal', async (c) => {
+  const db = drizzle(c.env.DB)
+  const {week} = c.req.param()
+  const {location} = c.req.param()
+  const {day} = c.req.param()
+  const {meal} = c.req.param()
+  const result = await db.select().from(menu).where(
+    and(
+      eq(menu.week, week),
+      eq(menu.location, location),
+      eq(menu.day, day),
+      eq(menu.meal, meal)
+    )
+  )
+  return c.json(result)
+})
+app.get('/item/:id', async (c) => {
+  const db = drizzle(c.env.DB)
+  const {id} = c.req.param()
+  const result = await db.select().from(item).where(eq(item.item_id, id),)
+  return c.json(result)
+})
+app.post('/item/:id/missing', async (c) => {
+  const db = drizzle(c.env.DB);
+  const { id } = c.req.param();
+  const currentItem = await db.select().from(item).where(eq(item.item_id, id)).execute();
+  if (currentItem.length === 0) {
+    return c.json({ error: "Item not found" }, 404); 
+  }
+  const updatedReports = currentItem[0].missing_reports + 1;
+  const result = await db.update(item)
+    .set({ missing_reports: updatedReports })
+    .where(eq(item.item_id, id));
+  return c.json({ success: true, updatedReports });
+});
+
+// note: when i run a cron job to update, use thie fetch request
+
+// ANOTEHRR NOTE: PROBABLY BETTER TO JUST MOVE THIS OFF OF AN API ENDPOIJNT>???? WHAT WERE YOU THINKING
+// JUST HAVE THE CRON FUNCTION JUST UPDATE IT LMAO. 
+// PROTECT AGAINST DUPLICATE CALLS?
 
 // fetch("https://ucmmmdb.ucmmm-ucm.workers.dev/weekly-update", {
 //   method: "POST",

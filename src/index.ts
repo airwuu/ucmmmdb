@@ -17,17 +17,33 @@ import { eq, and } from 'drizzle-orm';
 import { Hono } from 'hono'
 import {nameLocation, nameCategoryPav, nameCategoryDC, nameDay, idLocation,idCategoryPav, idCategoryDC,idDay, pavMenuGroupTime, formatTimePAV, fetchMenu, formatTimeDC, dcMenuGroupTime} from "./menu_functions"
 import { v4 as uuidv4 } from 'uuid';
+import { cors } from 'hono/cors'
 const app = new Hono<{ Bindings: CloudflareBindings }>()
+
+app.use(cors());
 
 app.get('/', (c) => {
   return c.text('Hello Hono changed!')
 })
 
-app.get('/users', async (c) => {
-  const db = drizzle(c.env.DB)
-  const result = await db.select().from(users).all()
-  return c.json(result)
-})
+
+// app.get('/users', async (c) => {
+//   const db = drizzle(c.env.DB)
+//   const result = await db.select().from(users).all()
+//   return c.json(result)
+// })
+
+app.use(
+  '/*',
+  cors({
+    origin: ['http://ucmmm.com', 'http://localhost:3000/'],
+    allowHeaders: ['X-Custom-Header', 'Upgrade-Insecure-Requests'],
+    allowMethods: ['POST', 'GET', 'OPTIONS'],
+    exposeHeaders: ['Content-Length', 'X-Kuma-Revision'],
+    maxAge: 600,
+    credentials: true,
+  })
+)
 
 app.get('/menu/:week/:location/:day/:meal', async (c) => {
   const db = drizzle(c.env.DB)

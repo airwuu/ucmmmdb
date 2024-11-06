@@ -11,7 +11,7 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import { users , menu, item } from '../schemas/drizzle'
+import { menu } from '../schemas/drizzle'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq, and } from 'drizzle-orm';
 import { Hono } from 'hono'
@@ -23,7 +23,7 @@ const app = new Hono<{ Bindings: CloudflareBindings }>()
 app.use(cors());
 
 app.get('/', (c) => {
-  return c.text('Hello Hono changed!')
+  return c.text('Hello Hono changed! ucmmm!')
 })
 
 
@@ -64,20 +64,20 @@ app.get('/menu/:week/:location/:day/:meal', async (c) => {
 app.get('/item/:id', async (c) => {
   const db = drizzle(c.env.DB)
   const {id} = c.req.param()
-  const result = await db.select().from(item).where(eq(item.item_id, id),)
+  const result = await db.select().from(menu).where(eq(menu.item_id, id),)
   return c.json(result)
 })
 app.post('/item/:id/missing', async (c) => {
   const db = drizzle(c.env.DB);
   const { id } = c.req.param();
-  const currentItem = await db.select().from(item).where(eq(item.item_id, id)).execute();
+  const currentItem = await db.select().from(menu).where(eq(menu.item_id, id)).execute();
   if (currentItem.length === 0) {
     return c.json({ error: "Item not found" }, 404); 
   }
   const updatedReports = currentItem[0].missing_reports + 1;
-  const result = await db.update(item)
+  const result = await db.update(menu)
     .set({ missing_reports: updatedReports })
-    .where(eq(item.item_id, id));
+    .where(eq(menu.item_id, id));
   return c.json({ success: true, updatedReports });
 });
 
@@ -152,19 +152,16 @@ app.get('/weekly-update-pav', async (c) => {
                 for (let j = 0; j < items.length; j++){
                     // console.log(nameLocation[locationIndex]+ " : " + nameCategoryArray[categoryIndex] + " : " + nameDay[dayIndex] + " : " + stationName + " : " + items[j])
                     const newItemID= uuidv4()
-                    await db.insert(item).values({
-                            item_id: newItemID,
-                            name: items[j],
-                            missing_reports: 0,
-                    });
-                    await db.insert(menu).values({ // Ensure `id` is from itemData
-                             // Ensure this is the intended way to record week
+                    await db.insert(menu).values({
                             location: nameLocation[locationIndex], // Make sure this is a string
                             day: nameDay[dayIndex], // Make sure this is a string
                             meal: nameCategoryArray[categoryIndex], // Make sure this is a string
                             station: stationName, // Ensure this is a string
-                            item_id: newItemID, // Use the correct field for the item_id
+                            item_id: newItemID,
+                            name: items[j],
+                            missing_reports: 0,
                     });
+                  
                 }
             }
             console.log("successfully updated database")
@@ -238,19 +235,16 @@ app.get('/weekly-update-dc', async (c) => {
                 for (let j = 0; j < items.length; j++){
                     // console.log(nameLocation[locationIndex]+ " : " + nameCategoryArray[categoryIndex] + " : " + nameDay[dayIndex] + " : " + stationName + " : " + items[j])
                     const newItemID= uuidv4()
-                    await db.insert(item).values({
+                    await db.insert(menu).values({
+                            location: nameLocation[locationIndex], // Make sure this is a string
+                            day: nameDay[dayIndex], // Make sure this is a string
+                            meal: nameCategoryArray[categoryIndex], // Make sure this is a string
+                            station: stationName,
                             item_id: newItemID,
                             name: items[j],
                             missing_reports: 0,
                     });
-                    await db.insert(menu).values({ // Ensure `id` is from itemData
-                             // Ensure this is the intended way to record week
-                            location: nameLocation[locationIndex], // Make sure this is a string
-                            day: nameDay[dayIndex], // Make sure this is a string
-                            meal: nameCategoryArray[categoryIndex], // Make sure this is a string
-                            station: stationName, // Ensure this is a string
-                            item_id: newItemID, // Use the correct field for the item_id
-                    });
+               
                 }
             }
             console.log("successfully updated database")

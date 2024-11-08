@@ -80,6 +80,19 @@ app.post('/item/:id/missing', async (c) => {
     .where(eq(menu.item_id, id));
   return c.json({ success: true, updatedReports });
 });
+app.post('/item/:id/missing/reset', async (c) => {
+  const db = drizzle(c.env.DB);
+  const { id } = c.req.param();
+  const currentItem = await db.select().from(menu).where(eq(menu.item_id, id)).execute();
+  if (currentItem.length === 0) {
+    return c.json({ error: "Item not found" }, 404); 
+  }
+  const updatedReports = 0;
+  const result = await db.update(menu)
+    .set({ missing_reports: updatedReports })
+    .where(eq(menu.item_id, id));
+  return c.json({ success: true, updatedReports });
+});
 
 // note: when i run a cron job to update, use thie fetch request
 

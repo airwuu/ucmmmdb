@@ -271,7 +271,7 @@ app.get('/weekly-update-dc', async (c) => {
   catch{
     console.log("ded")
   }
-  return c.text('attempted to update weekly thing to pav')
+  return c.text('attempted to update weekly thing to dc')
 })
 
 export default app

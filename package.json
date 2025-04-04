@@ -16,9 +16,10 @@
     "@cloudflare/vitest-pool-workers": "^0.5.2",
     "typescript": "^5.5.2",
     "vitest": "2.0.5",
-    "wrangler": "^3.60.3"
+    "wrangler": "^3.114.4"
   },
   "dependencies": {
+    "dayjs": "^1.11.13",
     "drizzle-kit": "^0.27.0",
     "drizzle-orm": "^0.36.0",
     "hono": "^4.6.8",

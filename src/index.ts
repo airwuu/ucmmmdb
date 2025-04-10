@@ -409,6 +409,92 @@ async function populatePavilionDataForWeek(db: DrizzleD1Database<Record<string, 
   }
 }
 
+async function populateDCDataForWeek(db: DrizzleD1Database<Record<string, never>>, weekStartDateString: string): Promise<{ success: boolean; error?: any }> {
+  console.log(`Starting data population for Pavilion, week: ${weekStartDateString}`);
+  try {
+    const locationIndex = 1;
+    const existingData = await db.select({ count: sql<number>`count(*)` })
+      .from(menu)
+      .where(and(eq(menu.week, weekStartDateString), eq(menu.location, nameLocation[locationIndex])))
+      .get();
+
+    if (existingData && existingData.count > 0) {
+        console.log(`Data for DC week ${weekStartDateString} already exists. Skipping population.`);
+        return { success: true };
+    }
+    for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
+      const categoryArray = idCategoryDC;
+      const nameCategoryArray = nameCategoryDC;
+
+      for (let categoryIndex = 0; categoryIndex < categoryArray.length; categoryIndex++) {
+        try {
+          const menuData: any = await fetchMenu(locationIndex, dayIndex, categoryIndex);
+          if (!menuData?.data?.menuItems) {
+              console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
+              continue; 
+          }
+          const orderedPairs = menuData.data.menuItems.map((item: { name: string; description: string; }) => [item.name, item.description] as [string, string]);
+          for (let i = 0; i < orderedPairs.length; i++){
+              const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : ""); 
+              const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
+                .replace(/\s*\(.*?\)\s*/g, ' ')
+                .replace(/:/g, ' ')
+                .replace(/;/g, ' ')
+                .replace(/\bProtein\b/gi, ' ')
+                .replace(/\bChoice\b/gi, ' ')
+                .replace(/\bOf\b/gi, ' ')
+                .replace(/\bServed\b/gi, ' ')
+                .replace(/\bSides\b/gi, ' ')
+                .replace(/\bOption\b/gi, ' ')
+                .replace(/\bOptions\b/gi, ' ')
+                .replace(/\bCome\b/gi, ' ')
+                .replace(/\bComes\b/gi, ' ')
+                .replace(/\bMeal\b/gi, ' ')
+                .replace(/\bMindful\b/gi, ' ')
+                .replace(/\bOn a\b/gi, ',')
+                .replace(/\bthe day\b/gi, ',')
+                .replace(/\bOn\b/gi, ',')
+                .replace(/\bOr\b/gi, ',')
+                .replace(/\bAnd\b/gi, ',')
+                .replace(/&/g, ',')
+                .replace(/\bWith\b/gi, ',')
+                .replace(/\bIn\b/gi, ',')
+                .replace(/w\//g, ',')
+                .replace(/\. /g, ",")
+                .split(',')
+                .map((item: string) => item.trim())
+                .map((item: string) => item.trim().replace(/\.$/, ''))
+                .filter((item: string) => item !== '');
+              for (let j = 0; j < items.length; j++){
+                  const newItemID= uuidv4();
+                  await db.insert(menu).values({
+                          location: nameLocation[locationIndex],
+                          day: nameDay[dayIndex],
+                          meal: nameCategoryArray[categoryIndex],
+                          station: stationName,
+                          item_id: newItemID,
+                          name: items[j],
+                          missing_reports: 0,
+                          week: weekStartDateString 
+                  }).execute();
+              }
+          }
+          console.log(`Successfully processed loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
+        } catch (fetchInsertError) {
+          console.error(`Error fetching/inserting for loc ${locationIndex}, day ${dayIndex}, cat ${categoryIndex}:`, fetchInsertError);
+          // add stuff to do here when something fails to populate
+        }
+      }
+    }
+    console.log(`Data population for Pavilion, week: ${weekStartDateString} completed successfully.`);
+    return { success: true };
+  }
+  catch(error) {
+    console.error(`Major error during Pavilion data population for week ${weekStartDateString}:`, error);
+    return { success: false, error: error };
+  }
+}
+
 
 app.get('/menu/:week/:location/:day/:meal', async (c) => {
   const db = drizzle(c.env.DB);
@@ -433,6 +519,20 @@ app.get('/menu/:week/:location/:day/:meal', async (c) => {
     console.log(`No menu data found for pav/${week}/${day}/${meal}. Attempting to populate...`);
 
     const populationResult = await populatePavilionDataForWeek(db, week);
+
+    if (populationResult.success) {
+        console.log("Population logic finished. Re-querying database...");
+        result = await db.select().from(menu).where(queryCondition).all();
+        console.log(`Found ${result.length} items after population attempt.`);
+    } else {
+        console.error("Population logic failed.", populationResult.error);
+
+    }
+  }
+  else if (result.length === 0 && location === "dc"){
+    console.log(`No menu data found for dc/${week}/${day}/${meal}. Attempting to populate...`);
+
+    const populationResult = await populateDCDataForWeek(db, week);
 
     if (populationResult.success) {
         console.log("Population logic finished. Re-querying database...");

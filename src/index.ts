@@ -52,7 +52,7 @@
 //   const {location} = c.req.param();
 //   const {day} = c.req.param();
 //   const {meal} = c.req.param();
-  
+
 //   const result = await db.select().from(menu).where(
 //     and(
 //       eq(menu.week, week),
@@ -131,7 +131,7 @@
 //       for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
 //         const categoryArray = locationIndex === 0 ? idCategoryPav : idCategoryDC;
 //         const nameCategoryArray = locationIndex === 0 ? nameCategoryPav : nameCategoryDC;
-  
+
 //         for (let categoryIndex = 0; categoryIndex < categoryArray.length; categoryIndex++) {
 //           try {
 //             // Fetch the menu data for this location, day, and category (meal)
@@ -166,7 +166,7 @@
 //                 .replace(/\bWith\b/gi, ',')     
 //                 .replace(/\bIn\b/gi, ',')      
 //                 .replace(/w\//g, ',')    //  w/
-                
+
 //                 // format string for further use  
 //                 .replace(/\. /g, ",") // i cant believe they also typo , as . 
 //                 .split(',')
@@ -186,7 +186,7 @@
 //                             missing_reports: 0,
 //                             week: weekStartDateString
 //                     });
-                  
+
 //                 }
 //             }
 //             console.log("successfully updated database")
@@ -215,7 +215,7 @@
 //       for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
 //         const categoryArray = locationIndex === 0 ? idCategoryPav : idCategoryDC;
 //         const nameCategoryArray = locationIndex === 0 ? nameCategoryPav : nameCategoryDC;
-  
+
 //         for (let categoryIndex = 0; categoryIndex < categoryArray.length; categoryIndex++) {
 //           try {
 //             // Fetch the menu data for this location, day, and category (meal)
@@ -250,7 +250,7 @@
 //                 .replace(/\bWith\b/gi, ',')     
 //                 .replace(/\bIn\b/gi, ',')      
 //                 .replace(/w\//g, ',')    //  w/
-                
+
 //                 // format string for further use  
 //                 .replace(/\. /g, ",") // i cant believe they also typo , as . 
 //                 .split(',')
@@ -269,7 +269,7 @@
 //                             name: items[j],
 //                             missing_reports: 0,
 //                     });
-               
+
 //                 }
 //             }
 //             console.log("successfully updated database")
@@ -295,18 +295,20 @@ import { menu } from '../schemas/drizzle'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq, and } from 'drizzle-orm';
 import { Hono } from 'hono'
-import {nameLocation, nameCategoryPav, nameCategoryDC, nameDay, idLocation,idCategoryPav, idCategoryDC,idDay, pavMenuGroupTime, formatTimePAV, fetchMenu, formatTimeDC, dcMenuGroupTime} from "./menu_functions"
+import { nameLocation, nameCategoryPav, nameCategoryDC, nameDay, idLocation, idCategoryPav, idCategoryDC, idDay, pavMenuGroupTime, formatTimePAV, fetchMenu, formatTimeDC, dcMenuGroupTime } from "./menu_functions"
 import { v4 as uuidv4 } from 'uuid';
 import { cors } from 'hono/cors'
+import foodTruckRoutes from './routes/foodtrucks';
+import { FoodTruckService } from './services/foodTruckService';
 
 
 interface CloudflareBindings {
-    DB: D1Database;
+  DB: D1Database;
 }
 
 const app = new Hono<{ Bindings: CloudflareBindings }>()
 
-app.use(cors()); 
+app.use(cors());
 // app.use(
 //   '/*',
 //   cors({
@@ -333,8 +335,8 @@ async function populatePavilionDataForWeek(db: DrizzleD1Database<Record<string, 
       .get();
 
     if (existingData && existingData.count > 0) {
-        console.log(`Data for Pavilion week ${weekStartDateString} already exists. Skipping population.`);
-        return { success: true };
+      console.log(`Data for Pavilion week ${weekStartDateString} already exists. Skipping population.`);
+      return { success: true };
     }
     for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
       const categoryArray = idCategoryPav;
@@ -344,54 +346,54 @@ async function populatePavilionDataForWeek(db: DrizzleD1Database<Record<string, 
         try {
           const menuData: any = await fetchMenu(locationIndex, dayIndex, categoryIndex);
           if (!menuData?.data?.menuItems) {
-              console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
-              continue; 
+            console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
+            continue;
           }
           const orderedPairs = menuData.data.menuItems.map((item: { name: string; description: string; }) => [item.name, item.description] as [string, string]);
-          for (let i = 0; i < orderedPairs.length; i++){
-              const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : ""); 
-              const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
-                .replace(/\s*\(.*?\)\s*/g, ' ')
-                .replace(/:/g, ' ')
-                .replace(/;/g, ' ')
-                .replace(/\bProtein\b/gi, ' ')
-                .replace(/\bChoice\b/gi, ' ')
-                .replace(/\bOf\b/gi, ' ')
-                .replace(/\bServed\b/gi, ' ')
-                .replace(/\bSides\b/gi, ' ')
-                .replace(/\bOption\b/gi, ' ')
-                .replace(/\bOptions\b/gi, ' ')
-                .replace(/\bCome\b/gi, ' ')
-                .replace(/\bComes\b/gi, ' ')
-                .replace(/\bMeal\b/gi, ' ')
-                .replace(/\bMindful\b/gi, ' ')
-                .replace(/\bOn a\b/gi, ',')
-                .replace(/\bthe day\b/gi, ',')
-                .replace(/\bOn\b/gi, ',')
-                .replace(/\bOr\b/gi, ',')
-                .replace(/\bAnd\b/gi, ',')
-                .replace(/&/g, ',')
-                .replace(/\bWith\b/gi, ',')
-                .replace(/\bIn\b/gi, ',')
-                .replace(/w\//g, ',')
-                .replace(/\. /g, ",")
-                .split(',')
-                .map((item: string) => item.trim())
-                .map((item: string) => item.trim().replace(/\.$/, ''))
-                .filter((item: string) => item !== '');
-              for (let j = 0; j < items.length; j++){
-                  const newItemID= uuidv4();
-                  await db.insert(menu).values({
-                          location: nameLocation[locationIndex],
-                          day: nameDay[dayIndex],
-                          meal: nameCategoryArray[categoryIndex],
-                          station: stationName,
-                          item_id: newItemID,
-                          name: items[j],
-                          missing_reports: 0,
-                          week: weekStartDateString 
-                  }).execute();
-              }
+          for (let i = 0; i < orderedPairs.length; i++) {
+            const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : "");
+            const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
+              .replace(/\s*\(.*?\)\s*/g, ' ')
+              .replace(/:/g, ' ')
+              .replace(/;/g, ' ')
+              .replace(/\bProtein\b/gi, ' ')
+              .replace(/\bChoice\b/gi, ' ')
+              .replace(/\bOf\b/gi, ' ')
+              .replace(/\bServed\b/gi, ' ')
+              .replace(/\bSides\b/gi, ' ')
+              .replace(/\bOption\b/gi, ' ')
+              .replace(/\bOptions\b/gi, ' ')
+              .replace(/\bCome\b/gi, ' ')
+              .replace(/\bComes\b/gi, ' ')
+              .replace(/\bMeal\b/gi, ' ')
+              .replace(/\bMindful\b/gi, ' ')
+              .replace(/\bOn a\b/gi, ',')
+              .replace(/\bthe day\b/gi, ',')
+              .replace(/\bOn\b/gi, ',')
+              .replace(/\bOr\b/gi, ',')
+              .replace(/\bAnd\b/gi, ',')
+              .replace(/&/g, ',')
+              .replace(/\bWith\b/gi, ',')
+              .replace(/\bIn\b/gi, ',')
+              .replace(/w\//g, ',')
+              .replace(/\. /g, ",")
+              .split(',')
+              .map((item: string) => item.trim())
+              .map((item: string) => item.trim().replace(/\.$/, ''))
+              .filter((item: string) => item !== '');
+            for (let j = 0; j < items.length; j++) {
+              const newItemID = uuidv4();
+              await db.insert(menu).values({
+                location: nameLocation[locationIndex],
+                day: nameDay[dayIndex],
+                meal: nameCategoryArray[categoryIndex],
+                station: stationName,
+                item_id: newItemID,
+                name: items[j],
+                missing_reports: 0,
+                week: weekStartDateString
+              }).execute();
+            }
           }
           console.log(`Successfully processed loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
         } catch (fetchInsertError) {
@@ -403,7 +405,7 @@ async function populatePavilionDataForWeek(db: DrizzleD1Database<Record<string, 
     console.log(`Data population for Pavilion, week: ${weekStartDateString} completed successfully.`);
     return { success: true };
   }
-  catch(error) {
+  catch (error) {
     console.error(`Major error during Pavilion data population for week ${weekStartDateString}:`, error);
     return { success: false, error: error };
   }
@@ -419,8 +421,8 @@ async function populateDCDataForWeek(db: DrizzleD1Database<Record<string, never>
       .get();
 
     if (existingData && existingData.count > 0) {
-        console.log(`Data for DC week ${weekStartDateString} already exists. Skipping population.`);
-        return { success: true };
+      console.log(`Data for DC week ${weekStartDateString} already exists. Skipping population.`);
+      return { success: true };
     }
     for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
       const categoryArray = idCategoryDC;
@@ -430,54 +432,54 @@ async function populateDCDataForWeek(db: DrizzleD1Database<Record<string, never>
         try {
           const menuData: any = await fetchMenu(locationIndex, dayIndex, categoryIndex);
           if (!menuData?.data?.menuItems) {
-              console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
-              continue; 
+            console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
+            continue;
           }
           const orderedPairs = menuData.data.menuItems.map((item: { name: string; description: string; }) => [item.name, item.description] as [string, string]);
-          for (let i = 0; i < orderedPairs.length; i++){
-              const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : ""); 
-              const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
-                .replace(/\s*\(.*?\)\s*/g, ' ')
-                .replace(/:/g, ' ')
-                .replace(/;/g, ' ')
-                .replace(/\bProtein\b/gi, ' ')
-                .replace(/\bChoice\b/gi, ' ')
-                .replace(/\bOf\b/gi, ' ')
-                .replace(/\bServed\b/gi, ' ')
-                .replace(/\bSides\b/gi, ' ')
-                .replace(/\bOption\b/gi, ' ')
-                .replace(/\bOptions\b/gi, ' ')
-                .replace(/\bCome\b/gi, ' ')
-                .replace(/\bComes\b/gi, ' ')
-                .replace(/\bMeal\b/gi, ' ')
-                .replace(/\bMindful\b/gi, ' ')
-                .replace(/\bOn a\b/gi, ',')
-                .replace(/\bthe day\b/gi, ',')
-                .replace(/\bOn\b/gi, ',')
-                .replace(/\bOr\b/gi, ',')
-                .replace(/\bAnd\b/gi, ',')
-                .replace(/&/g, ',')
-                .replace(/\bWith\b/gi, ',')
-                .replace(/\bIn\b/gi, ',')
-                .replace(/w\//g, ',')
-                .replace(/\. /g, ",")
-                .split(',')
-                .map((item: string) => item.trim())
-                .map((item: string) => item.trim().replace(/\.$/, ''))
-                .filter((item: string) => item !== '');
-              for (let j = 0; j < items.length; j++){
-                  const newItemID= uuidv4();
-                  await db.insert(menu).values({
-                          location: nameLocation[locationIndex],
-                          day: nameDay[dayIndex],
-                          meal: nameCategoryArray[categoryIndex],
-                          station: stationName,
-                          item_id: newItemID,
-                          name: items[j],
-                          missing_reports: 0,
-                          week: weekStartDateString 
-                  }).execute();
-              }
+          for (let i = 0; i < orderedPairs.length; i++) {
+            const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : "");
+            const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
+              .replace(/\s*\(.*?\)\s*/g, ' ')
+              .replace(/:/g, ' ')
+              .replace(/;/g, ' ')
+              .replace(/\bProtein\b/gi, ' ')
+              .replace(/\bChoice\b/gi, ' ')
+              .replace(/\bOf\b/gi, ' ')
+              .replace(/\bServed\b/gi, ' ')
+              .replace(/\bSides\b/gi, ' ')
+              .replace(/\bOption\b/gi, ' ')
+              .replace(/\bOptions\b/gi, ' ')
+              .replace(/\bCome\b/gi, ' ')
+              .replace(/\bComes\b/gi, ' ')
+              .replace(/\bMeal\b/gi, ' ')
+              .replace(/\bMindful\b/gi, ' ')
+              .replace(/\bOn a\b/gi, ',')
+              .replace(/\bthe day\b/gi, ',')
+              .replace(/\bOn\b/gi, ',')
+              .replace(/\bOr\b/gi, ',')
+              .replace(/\bAnd\b/gi, ',')
+              .replace(/&/g, ',')
+              .replace(/\bWith\b/gi, ',')
+              .replace(/\bIn\b/gi, ',')
+              .replace(/w\//g, ',')
+              .replace(/\. /g, ",")
+              .split(',')
+              .map((item: string) => item.trim())
+              .map((item: string) => item.trim().replace(/\.$/, ''))
+              .filter((item: string) => item !== '');
+            for (let j = 0; j < items.length; j++) {
+              const newItemID = uuidv4();
+              await db.insert(menu).values({
+                location: nameLocation[locationIndex],
+                day: nameDay[dayIndex],
+                meal: nameCategoryArray[categoryIndex],
+                station: stationName,
+                item_id: newItemID,
+                name: items[j],
+                missing_reports: 0,
+                week: weekStartDateString
+              }).execute();
+            }
           }
           console.log(`Successfully processed loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
         } catch (fetchInsertError) {
@@ -489,7 +491,7 @@ async function populateDCDataForWeek(db: DrizzleD1Database<Record<string, never>
     console.log(`Data population for Pavilion, week: ${weekStartDateString} completed successfully.`);
     return { success: true };
   }
-  catch(error) {
+  catch (error) {
     console.error(`Major error during Pavilion data population for week ${weekStartDateString}:`, error);
     return { success: false, error: error };
   }
@@ -498,48 +500,48 @@ async function populateDCDataForWeek(db: DrizzleD1Database<Record<string, never>
 
 app.get('/menu/:week/:location/:day/:meal', async (c) => {
   const db = drizzle(c.env.DB);
-  const week = c.req.param('week'); 
+  const week = c.req.param('week');
   const location = c.req.param('location');
   const day = c.req.param('day');
   const meal = c.req.param('meal');
 
   // Define the query condition
   const queryCondition = and(
-      eq(menu.week, week),
-      eq(menu.location, location),
-      eq(menu.day, day),
-      eq(menu.meal, meal)
-    );
+    eq(menu.week, week),
+    eq(menu.location, location),
+    eq(menu.day, day),
+    eq(menu.meal, meal)
+  );
 
 
   let result = await db.select().from(menu).where(queryCondition).all();
 
 
-  if (result.length === 0 && location === "pav") { 
+  if (result.length === 0 && location === "pav") {
     console.log(`No menu data found for pav/${week}/${day}/${meal}. Attempting to populate...`);
 
     const populationResult = await populatePavilionDataForWeek(db, week);
 
     if (populationResult.success) {
-        console.log("Population logic finished. Re-querying database...");
-        result = await db.select().from(menu).where(queryCondition).all();
-        console.log(`Found ${result.length} items after population attempt.`);
+      console.log("Population logic finished. Re-querying database...");
+      result = await db.select().from(menu).where(queryCondition).all();
+      console.log(`Found ${result.length} items after population attempt.`);
     } else {
-        console.error("Population logic failed.", populationResult.error);
+      console.error("Population logic failed.", populationResult.error);
 
     }
   }
-  else if (result.length === 0 && location === "dc"){
+  else if (result.length === 0 && location === "dc") {
     console.log(`No menu data found for dc/${week}/${day}/${meal}. Attempting to populate...`);
 
     const populationResult = await populateDCDataForWeek(db, week);
 
     if (populationResult.success) {
-        console.log("Population logic finished. Re-querying database...");
-        result = await db.select().from(menu).where(queryCondition).all();
-        console.log(`Found ${result.length} items after population attempt.`);
+      console.log("Population logic finished. Re-querying database...");
+      result = await db.select().from(menu).where(queryCondition).all();
+      console.log(`Found ${result.length} items after population attempt.`);
     } else {
-        console.error("Population logic failed.", populationResult.error);
+      console.error("Population logic failed.", populationResult.error);
 
     }
   }
@@ -549,7 +551,7 @@ app.get('/menu/:week/:location/:day/:meal', async (c) => {
 
 app.get('/item/:id', async (c) => {
   const db = drizzle(c.env.DB)
-  const {id} = c.req.param()
+  const { id } = c.req.param()
   const result = await db.select().from(menu).where(eq(menu.item_id, id),)
   return c.json(result)
 })
@@ -558,7 +560,7 @@ app.post('/item/:id/missing', async (c) => {
   const { id } = c.req.param();
   const currentItem = await db.select().from(menu).where(eq(menu.item_id, id)).execute();
   if (currentItem.length === 0) {
-    return c.json({ error: "Item not found" }, 404); 
+    return c.json({ error: "Item not found" }, 404);
   }
   const updatedReports = currentItem[0].missing_reports + 1;
   const result = await db.update(menu)
@@ -571,7 +573,7 @@ app.post('/item/:id/missing/reset', async (c) => {
   const { id } = c.req.param();
   const currentItem = await db.select().from(menu).where(eq(menu.item_id, id)).execute();
   if (currentItem.length === 0) {
-    return c.json({ error: "Item not found" }, 404); 
+    return c.json({ error: "Item not found" }, 404);
   }
   const updatedReports = 0;
   const result = await db.update(menu)
@@ -598,9 +600,24 @@ app.post('/weekly-update-pav', async (c) => {
 
 
 app.post('/weekly-update-dc', async (c) => {
-    return c.text('attempted to update weekly thing to dc - will fix later');
+  return c.text('attempted to update weekly thing to dc - will fix later');
 });
 
-export default app;
+// Mount food truck routes
+app.route('/foodtrucks', foodTruckRoutes);
 
+// Export with scheduled handler for cron triggers
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: CloudflareBindings, ctx: ExecutionContext) {
+    console.log(`Cron trigger fired at ${new Date().toISOString()}`);
 
+    const db = drizzle(env.DB);
+    const service = new FoodTruckService(db);
+
+    // Pre-fetch current and next week to warm the cache
+    const result = await service.refreshCache();
+
+    console.log('Cache refresh completed:', result);
+  }
+};

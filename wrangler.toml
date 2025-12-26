@@ -21,6 +21,11 @@ migrations_dir = ".drizzle-out"
 [observability]
 enabled = true
 
+# Cron Triggers for scheduled tasks
+# Runs every Sunday at 2AM PST (10AM UTC) to pre-warm food truck cache
+[triggers]
+crons = ["0 10 * * SUN"]
+
 # Automatically place your workloads in an optimal location to minimize latency.
 # If you are running back-end logic in a Worker, running it closer to your back-end infrastructure
 # rather than the end user may result in better performance.

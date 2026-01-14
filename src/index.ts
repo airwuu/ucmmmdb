@@ -326,177 +326,117 @@ app.get('/', (c) => {
   return c.text('Hello Hono changed! ucmmm!')
 })
 
-async function populatePavilionDataForWeek(db: DrizzleD1Database<Record<string, never>>, weekStartDateString: string): Promise<{ success: boolean; error?: any }> {
-  console.log(`Starting data population for Pavilion, week: ${weekStartDateString}`);
+/**
+ * Populate a single menu slot (one day + one meal) for a given location.
+ * Uses ON CONFLICT IGNORE for idempotent inserts - safe to call multiple times.
+ */
+async function populateMenuSlot(
+  db: DrizzleD1Database<Record<string, never>>,
+  week: string,
+  location: string,  // 'pav' or 'dc'
+  day: string,       // 'sunday', 'monday', etc.
+  meal: string       // 'breakfast', 'lunch', 'dinner', 'late_night'
+): Promise<{ success: boolean; itemsInserted: number; error?: any }> {
+  console.log(`[populateMenuSlot] Starting for ${location}/${day}/${meal}, week: ${week}`);
+
   try {
-    const locationIndex = 0;
-    const existingData = await db.select({ count: sql<number>`count(*)` })
-      .from(menu)
-      .where(and(eq(menu.week, weekStartDateString), eq(menu.location, nameLocation[locationIndex])))
-      .get();
+    // Convert string params to indices
+    const locationIndex = nameLocation.indexOf(location);
+    const dayIndex = nameDay.indexOf(day);
 
-    if (existingData && existingData.count > 0) {
-      console.log(`Data for Pavilion week ${weekStartDateString} already exists. Skipping population.`);
-      return { success: true };
+    if (locationIndex === -1 || dayIndex === -1) {
+      console.error(`Invalid location "${location}" or day "${day}"`);
+      return { success: false, itemsInserted: 0, error: 'Invalid location or day' };
     }
-    for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
-      const categoryArray = idCategoryPav;
-      const nameCategoryArray = nameCategoryPav;
 
-      for (let categoryIndex = 0; categoryIndex < categoryArray.length; categoryIndex++) {
+    // Get the correct category array based on location
+    const nameCategoryArray = locationIndex === 0 ? nameCategoryPav : nameCategoryDC;
+    const categoryIndex = nameCategoryArray.indexOf(meal);
+
+    if (categoryIndex === -1) {
+      console.error(`Invalid meal "${meal}" for location "${location}"`);
+      return { success: false, itemsInserted: 0, error: 'Invalid meal for location' };
+    }
+
+    // Fetch menu data for this specific slot (1 API call)
+    const menuData: any = await fetchMenu(locationIndex, dayIndex, categoryIndex);
+
+    if (!menuData?.data?.menuItems) {
+      console.warn(`[populateMenuSlot] No menu items returned for ${location}/${day}/${meal}`);
+      return { success: true, itemsInserted: 0 };
+    }
+
+    const orderedPairs = menuData.data.menuItems.map((item: { name: string; description: string; }) =>
+      [item.name, item.description] as [string, string]
+    );
+
+    let itemsInserted = 0;
+
+    for (const [, description] of orderedPairs) {
+      const stationName = description.includes(":") ? description.match(/^[^:]+/)?.[0] ?? "" : "";
+
+      // Parse individual items from description
+      const items = description.replace(/^[^:]*:\s*/, "")
+        .replace(/\s*\(.*?\)\s*/g, ' ')
+        .replace(/:/g, ' ')
+        .replace(/;/g, ' ')
+        .replace(/\bProtein\b/gi, ' ')
+        .replace(/\bChoice\b/gi, ' ')
+        .replace(/\bOf\b/gi, ' ')
+        .replace(/\bServed\b/gi, ' ')
+        .replace(/\bSides\b/gi, ' ')
+        .replace(/\bOption\b/gi, ' ')
+        .replace(/\bOptions\b/gi, ' ')
+        .replace(/\bCome\b/gi, ' ')
+        .replace(/\bComes\b/gi, ' ')
+        .replace(/\bMeal\b/gi, ' ')
+        .replace(/\bMindful\b/gi, ' ')
+        .replace(/\bOn a\b/gi, ',')
+        .replace(/\bthe day\b/gi, ',')
+        .replace(/\bOn\b/gi, ',')
+        .replace(/\bOr\b/gi, ',')
+        .replace(/\bAnd\b/gi, ',')
+        .replace(/&/g, ',')
+        .replace(/\bWith\b/gi, ',')
+        .replace(/\bIn\b/gi, ',')
+        .replace(/w\//g, ',')
+        .replace(/\. /g, ",")
+        .split(',')
+        .map((item: string) => item.trim())
+        .map((item: string) => item.trim().replace(/\.$/, ''))
+        .filter((item: string) => item !== '');
+
+      for (const itemName of items) {
+        const newItemID = uuidv4();
         try {
-          const menuData: any = await fetchMenu(locationIndex, dayIndex, categoryIndex);
-          if (!menuData?.data?.menuItems) {
-            console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
-            continue;
-          }
-          const orderedPairs = menuData.data.menuItems.map((item: { name: string; description: string; }) => [item.name, item.description] as [string, string]);
-          for (let i = 0; i < orderedPairs.length; i++) {
-            const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : "");
-            const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
-              .replace(/\s*\(.*?\)\s*/g, ' ')
-              .replace(/:/g, ' ')
-              .replace(/;/g, ' ')
-              .replace(/\bProtein\b/gi, ' ')
-              .replace(/\bChoice\b/gi, ' ')
-              .replace(/\bOf\b/gi, ' ')
-              .replace(/\bServed\b/gi, ' ')
-              .replace(/\bSides\b/gi, ' ')
-              .replace(/\bOption\b/gi, ' ')
-              .replace(/\bOptions\b/gi, ' ')
-              .replace(/\bCome\b/gi, ' ')
-              .replace(/\bComes\b/gi, ' ')
-              .replace(/\bMeal\b/gi, ' ')
-              .replace(/\bMindful\b/gi, ' ')
-              .replace(/\bOn a\b/gi, ',')
-              .replace(/\bthe day\b/gi, ',')
-              .replace(/\bOn\b/gi, ',')
-              .replace(/\bOr\b/gi, ',')
-              .replace(/\bAnd\b/gi, ',')
-              .replace(/&/g, ',')
-              .replace(/\bWith\b/gi, ',')
-              .replace(/\bIn\b/gi, ',')
-              .replace(/w\//g, ',')
-              .replace(/\. /g, ",")
-              .split(',')
-              .map((item: string) => item.trim())
-              .map((item: string) => item.trim().replace(/\.$/, ''))
-              .filter((item: string) => item !== '');
-            for (let j = 0; j < items.length; j++) {
-              const newItemID = uuidv4();
-              await db.insert(menu).values({
-                location: nameLocation[locationIndex],
-                day: nameDay[dayIndex],
-                meal: nameCategoryArray[categoryIndex],
-                station: stationName,
-                item_id: newItemID,
-                name: items[j],
-                missing_reports: 0,
-                week: weekStartDateString
-              }).execute();
-            }
-          }
-          console.log(`Successfully processed loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
-        } catch (fetchInsertError) {
-          console.error(`Error fetching/inserting for loc ${locationIndex}, day ${dayIndex}, cat ${categoryIndex}:`, fetchInsertError);
-          // add stuff to do here when something fails to populate
+          // Use onConflictDoNothing for idempotent inserts
+          await db.insert(menu).values({
+            location: location,
+            day: day,
+            meal: meal,
+            station: stationName,
+            item_id: newItemID,
+            name: itemName,
+            missing_reports: 0,
+            week: week
+          }).onConflictDoNothing().execute();
+          itemsInserted++;
+        } catch (insertError) {
+          // Log but continue - might be a duplicate
+          console.warn(`Insert failed for item "${itemName}":`, insertError);
         }
       }
     }
-    console.log(`Data population for Pavilion, week: ${weekStartDateString} completed successfully.`);
-    return { success: true };
-  }
-  catch (error) {
-    console.error(`Major error during Pavilion data population for week ${weekStartDateString}:`, error);
-    return { success: false, error: error };
+
+    console.log(`[populateMenuSlot] Completed ${location}/${day}/${meal}: ${itemsInserted} items processed`);
+    return { success: true, itemsInserted };
+  } catch (error) {
+    console.error(`[populateMenuSlot] Error for ${location}/${day}/${meal}:`, error);
+    return { success: false, itemsInserted: 0, error };
   }
 }
 
-async function populateDCDataForWeek(db: DrizzleD1Database<Record<string, never>>, weekStartDateString: string): Promise<{ success: boolean; error?: any }> {
-  console.log(`Starting data population for Pavilion, week: ${weekStartDateString}`);
-  try {
-    const locationIndex = 1;
-    const existingData = await db.select({ count: sql<number>`count(*)` })
-      .from(menu)
-      .where(and(eq(menu.week, weekStartDateString), eq(menu.location, nameLocation[locationIndex])))
-      .get();
-
-    if (existingData && existingData.count > 0) {
-      console.log(`Data for DC week ${weekStartDateString} already exists. Skipping population.`);
-      return { success: true };
-    }
-    for (let dayIndex = 0; dayIndex < idDay.length; dayIndex++) {
-      const categoryArray = idCategoryDC;
-      const nameCategoryArray = nameCategoryDC;
-
-      for (let categoryIndex = 0; categoryIndex < categoryArray.length; categoryIndex++) {
-        try {
-          const menuData: any = await fetchMenu(locationIndex, dayIndex, categoryIndex);
-          if (!menuData?.data?.menuItems) {
-            console.warn(`No menu items found for loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
-            continue;
-          }
-          const orderedPairs = menuData.data.menuItems.map((item: { name: string; description: string; }) => [item.name, item.description] as [string, string]);
-          for (let i = 0; i < orderedPairs.length; i++) {
-            const stationName = (orderedPairs[i][1].includes(":") ? orderedPairs[i][1].match(/^[^:]+/)?.[0] ?? "" : "");
-            const items = orderedPairs[i][1].replace(/^[^:]*:\s*/, "")
-              .replace(/\s*\(.*?\)\s*/g, ' ')
-              .replace(/:/g, ' ')
-              .replace(/;/g, ' ')
-              .replace(/\bProtein\b/gi, ' ')
-              .replace(/\bChoice\b/gi, ' ')
-              .replace(/\bOf\b/gi, ' ')
-              .replace(/\bServed\b/gi, ' ')
-              .replace(/\bSides\b/gi, ' ')
-              .replace(/\bOption\b/gi, ' ')
-              .replace(/\bOptions\b/gi, ' ')
-              .replace(/\bCome\b/gi, ' ')
-              .replace(/\bComes\b/gi, ' ')
-              .replace(/\bMeal\b/gi, ' ')
-              .replace(/\bMindful\b/gi, ' ')
-              .replace(/\bOn a\b/gi, ',')
-              .replace(/\bthe day\b/gi, ',')
-              .replace(/\bOn\b/gi, ',')
-              .replace(/\bOr\b/gi, ',')
-              .replace(/\bAnd\b/gi, ',')
-              .replace(/&/g, ',')
-              .replace(/\bWith\b/gi, ',')
-              .replace(/\bIn\b/gi, ',')
-              .replace(/w\//g, ',')
-              .replace(/\. /g, ",")
-              .split(',')
-              .map((item: string) => item.trim())
-              .map((item: string) => item.trim().replace(/\.$/, ''))
-              .filter((item: string) => item !== '');
-            for (let j = 0; j < items.length; j++) {
-              const newItemID = uuidv4();
-              await db.insert(menu).values({
-                location: nameLocation[locationIndex],
-                day: nameDay[dayIndex],
-                meal: nameCategoryArray[categoryIndex],
-                station: stationName,
-                item_id: newItemID,
-                name: items[j],
-                missing_reports: 0,
-                week: weekStartDateString
-              }).execute();
-            }
-          }
-          console.log(`Successfully processed loc:${locationIndex}, day:${dayIndex}, cat:${categoryIndex}`);
-        } catch (fetchInsertError) {
-          console.error(`Error fetching/inserting for loc ${locationIndex}, day ${dayIndex}, cat ${categoryIndex}:`, fetchInsertError);
-          // add stuff to do here when something fails to populate
-        }
-      }
-    }
-    console.log(`Data population for Pavilion, week: ${weekStartDateString} completed successfully.`);
-    return { success: true };
-  }
-  catch (error) {
-    console.error(`Major error during Pavilion data population for week ${weekStartDateString}:`, error);
-    return { success: false, error: error };
-  }
-}
+// populateDCDataForWeek removed - now using populateMenuSlot for per-slot fetching
 
 
 app.get('/menu/:week/:location/:day/:meal', async (c) => {
@@ -518,32 +458,18 @@ app.get('/menu/:week/:location/:day/:meal', async (c) => {
   let result = await db.select().from(menu).where(queryCondition).all();
 
 
-  if (result.length === 0 && location === "pav") {
-    console.log(`No menu data found for pav/${week}/${day}/${meal}. Attempting to populate...`);
+  // If no data, populate just this specific slot (1 API call instead of 21-28)
+  if (result.length === 0 && (location === "pav" || location === "dc")) {
+    console.log(`No menu data found for ${location}/${week}/${day}/${meal}. Attempting to populate slot...`);
 
-    const populationResult = await populatePavilionDataForWeek(db, week);
-
-    if (populationResult.success) {
-      console.log("Population logic finished. Re-querying database...");
-      result = await db.select().from(menu).where(queryCondition).all();
-      console.log(`Found ${result.length} items after population attempt.`);
-    } else {
-      console.error("Population logic failed.", populationResult.error);
-
-    }
-  }
-  else if (result.length === 0 && location === "dc") {
-    console.log(`No menu data found for dc/${week}/${day}/${meal}. Attempting to populate...`);
-
-    const populationResult = await populateDCDataForWeek(db, week);
+    const populationResult = await populateMenuSlot(db, week, location, day, meal);
 
     if (populationResult.success) {
-      console.log("Population logic finished. Re-querying database...");
+      console.log(`Slot population finished. Inserted ${populationResult.itemsInserted} items. Re-querying...`);
       result = await db.select().from(menu).where(queryCondition).all();
-      console.log(`Found ${result.length} items after population attempt.`);
+      console.log(`Found ${result.length} items after population.`);
     } else {
-      console.error("Population logic failed.", populationResult.error);
-
+      console.error("Slot population failed.", populationResult.error);
     }
   }
 
@@ -605,18 +531,52 @@ app.post('/weekly-update-pav', async (c) => {
   const weekStartDateString = weekStart.format('YYYY-MM-DD');
 
   console.log(`POST /weekly-update-pav received. Triggering population for week ${weekStartDateString}`);
-  const result = await populatePavilionDataForWeek(db, weekStartDateString);
 
-  if (result.success) {
-    return c.text(`Pavilion data update initiated/checked for week ${weekStartDateString}. Status: Success.`);
-  } else {
-    return c.json({ error: "Failed to update Pavilion data.", details: result.error }, 500);
+  // Use per-slot population for each day/meal combination
+  let totalItems = 0;
+  for (const day of nameDay) {
+    for (const meal of nameCategoryPav) {
+      const result = await populateMenuSlot(db, weekStartDateString, 'pav', day, meal);
+      if (result.success) {
+        totalItems += result.itemsInserted;
+      }
+    }
   }
+
+  return c.json({
+    success: true,
+    week: weekStartDateString,
+    location: 'pav',
+    totalItemsProcessed: totalItems
+  });
 });
 
 
 app.post('/weekly-update-dc', async (c) => {
-  return c.text('attempted to update weekly thing to dc - will fix later');
+  const db = drizzle(c.env.DB);
+  const currentDate = dayjs();
+  const weekStart = currentDate.startOf('week');
+  const weekStartDateString = weekStart.format('YYYY-MM-DD');
+
+  console.log(`POST /weekly-update-dc received. Triggering population for week ${weekStartDateString}`);
+
+  // Use per-slot population for each day/meal combination
+  let totalItems = 0;
+  for (const day of nameDay) {
+    for (const meal of nameCategoryDC) {
+      const result = await populateMenuSlot(db, weekStartDateString, 'dc', day, meal);
+      if (result.success) {
+        totalItems += result.itemsInserted;
+      }
+    }
+  }
+
+  return c.json({
+    success: true,
+    week: weekStartDateString,
+    location: 'dc',
+    totalItemsProcessed: totalItems
+  });
 });
 
 // Mount food truck routes

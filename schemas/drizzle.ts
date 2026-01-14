@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { text, integer, sqliteTable } from "drizzle-orm/sqlite-core";
+import { text, integer, sqliteTable, unique } from "drizzle-orm/sqlite-core";
 
 // export const users = sqliteTable('users', {
 //   id: text('id').primaryKey(),
@@ -24,7 +24,9 @@ export const menu = sqliteTable('menu', {
     item_id: text('item_id').notNull(),
     name: text('name').notNull(),
     missing_reports: integer('missing_reports').notNull().default(0)
-});
+}, (table) => ({
+    uniqueMenuEntry: unique().on(table.week, table.location, table.day, table.meal, table.station, table.name)
+}));
 
 // Food Truck Schedule table - caches parsed schedule data
 export const foodTruckSchedule = sqliteTable('food_truck_schedule', {

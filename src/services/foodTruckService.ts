@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 
 const SOURCE_URL = 'https://dining.ucmerced.edu/retail-services/fork-road';
 
-const CACHE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
+const CACHE_TTL_SECONDS = 2 * 24 * 60 * 60; // 2 days
 
 export interface FoodTruckEntry {
     id: string;
@@ -68,19 +68,154 @@ export class FoodTruckService {
     }
 
     /**
-     * Retrieves cached week images for the frontend.
+     * Retrieves week images for the frontend.
+     * Scrapes the dining website if cache is empty or stale.
      */
     async getWeekImages(): Promise<WeekImage[]> {
+        const now = Math.floor(Date.now() / 1000);
+
+        // Check if we have fresh cached images
         const cached = await this.db.select()
             .from(foodTruckWeekImages)
             .all();
 
-        return cached.map(row => ({
-            start: row.week_start,
-            end: row.week_end,
-            url: row.image_url,
-            label: row.label || ''
-        }));
+        // If we have cached images and they're fresh, return them
+        if (cached.length > 0) {
+            const oldestCache = Math.min(...cached.map(c =>
+                c.scraped_at ? Math.floor(new Date(c.scraped_at).getTime() / 1000) : 0
+            ));
+            const cacheAge = now - oldestCache;
+
+            if (cacheAge < CACHE_TTL_SECONDS) {
+                return cached.map(row => ({
+                    start: row.week_start,
+                    end: row.week_end,
+                    url: row.image_url,
+                    label: row.label || ''
+                }));
+            }
+        }
+
+        // Scrape the dining website for fresh images
+        try {
+            const freshImages = await this.scrapeScheduleImages();
+
+            // Cache the scraped images
+            for (const img of freshImages) {
+                try {
+                    await this.db.insert(foodTruckWeekImages)
+                        .values({
+                            id: uuidv4(),
+                            week_start: img.start,
+                            week_end: img.end,
+                            image_url: img.url,
+                            label: img.label
+                        })
+                        .onConflictDoUpdate({
+                            target: foodTruckWeekImages.week_start,
+                            set: {
+                                image_url: img.url,
+                                week_end: img.end,
+                                label: img.label
+                            }
+                        })
+                        .execute();
+                } catch (e) {
+                    console.log(`Error caching image for week ${img.start}:`, e);
+                }
+            }
+
+            return freshImages;
+        } catch (e) {
+            console.error('Failed to scrape images, returning cached data:', e);
+            // Fallback to cached data even if stale
+            return cached.map(row => ({
+                start: row.week_start,
+                end: row.week_end,
+                url: row.image_url,
+                label: row.label || ''
+            }));
+        }
+    }
+
+    /**
+     * Scrapes the UC Merced dining website for schedule images.
+     * Supports two formats:
+     * - Single date: 12-8.png (month-day, week starts on this date)
+     * - Range: 8-25-8-31.png (month-day-month-day)
+     */
+    private async scrapeScheduleImages(): Promise<WeekImage[]> {
+        console.log('Scraping dining website for schedule images...');
+
+        const response = await fetch(SOURCE_URL, {
+            headers: { 'User-Agent': 'ucmmm-bot/1.0' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch dining website: ${response.status}`);
+        }
+
+        const html = await response.text();
+        const weeks: WeekImage[] = [];
+        const year = new Date().getFullYear();
+
+        // Pattern 1: Single date format - e.g., /page/images/12-8.png
+        const singleDateRegex = /src="([^"]*?\/page\/images\/(\d{1,2})-(\d{1,2})\.png)"/g;
+        let match;
+
+        while ((match = singleDateRegex.exec(html)) !== null) {
+            const [, fullUrl, month, day] = match;
+
+            // Skip non-schedule images (logos, icons, etc.)
+            if (fullUrl.includes('logo') || fullUrl.includes('icon') || fullUrl.includes('translate')) {
+                continue;
+            }
+
+            const url = fullUrl.startsWith('http') ? fullUrl : `https://dining.ucmerced.edu${fullUrl}`;
+            const startDate = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6);
+
+            weeks.push({
+                url,
+                start: this.formatIsoDate(startDate),
+                end: this.formatIsoDate(endDate),
+                label: `${month}/${day}`
+            });
+        }
+
+        // Pattern 2: Range format - e.g., 8-25-8-31.png
+        const rangeRegex = /src="([^"]*?(\d{1,2})-(\d{1,2})-(\d{1,2})-(\d{1,2})\.png)"/g;
+
+        while ((match = rangeRegex.exec(html)) !== null) {
+            const [, fullUrl, startMonth, startDay, endMonth, endDay] = match;
+
+            // Skip non-schedule images
+            if (fullUrl.includes('logo') || fullUrl.includes('icon') || fullUrl.includes('translate')) {
+                continue;
+            }
+
+            const url = fullUrl.startsWith('http') ? fullUrl : `https://dining.ucmerced.edu${fullUrl}`;
+            const startDate = new Date(year, parseInt(startMonth, 10) - 1, parseInt(startDay, 10));
+            const endDate = new Date(year, parseInt(endMonth, 10) - 1, parseInt(endDay, 10));
+
+            weeks.push({
+                url,
+                start: this.formatIsoDate(startDate),
+                end: this.formatIsoDate(endDate),
+                label: `${startMonth}/${startDay} – ${endMonth}/${endDay}`
+            });
+        }
+
+        // Sort by start date ascending
+        weeks.sort((a, b) => a.start.localeCompare(b.start));
+
+        console.log(`Found ${weeks.length} schedule images`);
+        return weeks;
+    }
+
+    private formatIsoDate(date: Date): string {
+        return date.toISOString().split('T')[0];
     }
 
     /**
